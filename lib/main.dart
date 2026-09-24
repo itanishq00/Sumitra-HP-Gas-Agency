@@ -3562,13 +3562,174 @@ class ProductDetailScreen extends StatelessWidget {
 // CUSTOMERS
 // ============================================================
 
-
-// Stubs for remaining modules
 class CustomersScreen extends StatelessWidget {
   const CustomersScreen({super.key});
+
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Customers Module'));
+  Widget build(BuildContext context) {
+    final collection =
+        FirebaseFirestore.instance.collection('customers');
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () {
+                showCustomerDialog(context);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Customer'),
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: collection
+                .orderBy('name')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Customers load nahi ho pa rahe.\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              final docs = snapshot.data?.docs ?? [];
+
+              if (docs.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.people_outline,
+                  title: 'No Customers',
+                  message: 'Abhi koi customer add nahi kiya gaya.',
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  20,
+                ),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final data = doc.data();
+
+                  return CustomerTile(
+                    doc: doc,
+                    data: data,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
+
+class CustomerTile extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final Map<String, dynamic> data;
+
+  const CustomerTile({
+    super.key,
+    required this.doc,
+    required this.data,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = data['active'] == true;
+
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Text(
+            ((data['name'] ?? 'C').toString().isEmpty)
+                ? 'C'
+                : data['name']
+                    .toString()
+                    .substring(0, 1)
+                    .toUpperCase(),
+          ),
+        ),
+        title: Text(
+          data['name'] ?? 'Unnamed',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(
+            '${data['phone'] ?? ''}\n'
+            '${data['address'] ?? ''}\n'
+            '${active ? 'Active' : 'Inactive'}',
+          ),
+        ),
+        isThreeLine: true,
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            // Wait for the popup-menu route to finish deactivating
+            // before opening another route.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted) return;
+
+              if (value == 'edit') {
+                showCustomerDialog(
+                  context,
+                  doc: doc,
+                  existingData: data,
+                );
+              } else if (value == 'delete') {
+                deleteCustomer(
+                  context,
+                  doc.reference,
+                );
+              }
+            });
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'edit',
+              child: Text('Edit'),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Text('Remove'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// STAFF
+// ============================================================
+
+
+// Stubs for remaining modules
 class StaffScreen extends StatelessWidget {
   const StaffScreen({super.key});
   @override
@@ -4337,6 +4498,220 @@ Future<void> showStockArrivalDialog(
 
 // ============================================================
 // DIALOG: CUSTOMER
+// ============================================================
+
+Future<void> showCustomerDialog(
+  BuildContext parentContext, {
+  QueryDocumentSnapshot<Map<String, dynamic>>? doc,
+  Map<String, dynamic>? existingData,
+}) async {
+  final data = existingData ?? {};
+
+  final nameController = TextEditingController(
+    text: data['name'] ?? '',
+  );
+  final phoneController = TextEditingController(
+    text: data['phone'] ?? '',
+  );
+  final addressController = TextEditingController(
+    text: data['address'] ?? '',
+  );
+
+  bool active = data['active'] == true;
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              if (nameController.text.trim().isEmpty) {
+                showMessage(
+                  'Customer name required hai.',
+                );
+                return;
+              }
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                final customerData = {
+                  'name': nameController.text.trim(),
+                  'phone': phoneController.text.trim(),
+                  'address':
+                      addressController.text.trim(),
+                  'active': active,
+                  'updatedAt':
+                      FieldValue.serverTimestamp(),
+                };
+
+                if (doc == null) {
+                  customerData['createdAt'] =
+                      FieldValue.serverTimestamp();
+
+                  await FirebaseFirestore.instance
+                      .collection('customers')
+                      .add(customerData);
+                } else {
+                  await doc.reference.update(
+                    customerData,
+                  );
+                }
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    doc == null
+                        ? 'Customer added successfully.'
+                        : 'Customer updated successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: Text(
+                doc == null
+                    ? 'Add Customer'
+                    : 'Edit Customer',
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      enabled: !saving,
+                      textCapitalization:
+                          TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer Name',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: phoneController,
+                      enabled: !saving,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: addressController,
+                      enabled: !saving,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Address',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Active'),
+                      value: active,
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              setDialogState(() {
+                                active = value;
+                              });
+                            },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    nameController.dispose();
+    phoneController.dispose();
+    addressController.dispose();
+  }
+}
+
+// ============================================================
+// DIALOG: STAFF
+// ============================================================
+
+Future<void> deleteCustomer(
+  BuildContext parentContext,
+  DocumentReference<Map<String, dynamic>> reference,
+) async {
+  final confirm = await showDeleteConfirmation(
+    parentContext,
+    'Remove this customer?',
+  );
+
+  if (confirm != true) return;
+
+  try {
+    await reference.delete();
+
+    if (parentContext.mounted) {
+      showMessage(
+        'Customer removed.',
+      );
+    }
+  } catch (e) {
+    if (parentContext.mounted) {
+      showMessage(
+        'Remove failed: $e',
+      );
+    }
+  }
+}
+
+// ============================================================
+// DELETE STAFF
 // ============================================================
 
 class NumberField extends StatelessWidget {
