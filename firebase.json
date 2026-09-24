@@ -1,0 +1,54 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "gas-agency-app",
+          "appId": "1:505152428698:android:4f456b4ae51558c4b95d23",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "gas-agency-app",
+          "appId": "1:505152428698:ios:ce6515fb567e67a8b95d23",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "gas-agency-app",
+          "appId": "1:505152428698:ios:ce6515fb567e67a8b95d23",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "gas-agency-app",
+          "configurations": {
+            "android": "1:505152428698:android:4f456b4ae51558c4b95d23",
+            "ios": "1:505152428698:ios:ce6515fb567e67a8b95d23",
+            "macos": "1:505152428698:ios:ce6515fb567e67a8b95d23",
+            "web": "1:505152428698:web:a4ee105ac7445695b95d23",
+            "windows": "1:505152428698:web:3fe8c44451915b23b95d23"
+          }
+        }
+      }
+    }
+  }
+}
