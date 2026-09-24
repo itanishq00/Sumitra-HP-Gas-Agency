@@ -1503,17 +1503,120 @@ class BlueRedSectionBackground extends StatelessWidget {
 // ============================================================
 
 
-class MainScreen extends StatelessWidget {
+// Stubs for future feature modules
+Future<void> checkAndPromptForUpcomingStockReceipt(BuildContext context) async {}
+Future<void> showUpcomingStockDialog(BuildContext context) async {}
+class UpcomingStockCard extends StatelessWidget {
+  const UpcomingStockCard({super.key});
+  @override
+  Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Upcoming Stock')));
+}
+class StockArrivalHistory extends StatelessWidget {
+  const StockArrivalHistory({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Stock Arrival History')), body: const Center(child: Text('History')));
+}
+class InventoryActivityScreen extends StatelessWidget {
+  const InventoryActivityScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Inventory Activity')), body: const Center(child: Text('Activity')));
+}
+class InventoryScreen extends StatelessWidget {
+  const InventoryScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Inventory Module'));
+}
+class CylinderDetailScreen extends StatelessWidget {
+  const CylinderDetailScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Cylinder Detail')), body: const Center(child: Text('Cylinders')));
+}
+class ProductDetailScreen extends StatelessWidget {
+  final String productId;
+  final String productName;
+  final IconData icon;
+  const ProductDetailScreen({super.key, required this.productId, required this.productName, required this.icon});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(productName)), body: Center(child: Text(productId)));
+}
+class CustomersScreen extends StatelessWidget {
+  const CustomersScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Customers Module'));
+}
+class StaffScreen extends StatelessWidget {
+  const StaffScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Staff Module'));
+}
+class IssuesScreen extends StatelessWidget {
+  const IssuesScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Issues Module'));
+}
+class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // On the first app open of the arrival date, ask the user
+    // what portion of the ordered stock was actually received.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      checkAndPromptForUpcomingStockReceipt(context);
+    });
+  }
+
+  final List<String> titles = const [
+    'Dashboard',
+    'Inventory',
+    'Customers',
+    'Staff',
+    'Issues',
+  ];
+
+  final List<Widget> pages = const [
+    DashboardScreen(),
+    InventoryScreen(),
+    CustomersScreen(),
+    StaffScreen(),
+    IssuesScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sumitra HP Gas'),
+        title: Text(
+          titles[selectedIndex],
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.security),
+            tooltip: 'Inventory Activity',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const InventoryActivityScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.info_outline),
+          ),
+          IconButton(
+            tooltip: 'Profile & Security',
             onPressed: () {
               Navigator.push(
                 context,
@@ -1522,31 +1625,404 @@ class MainScreen extends StatelessWidget {
                 ),
               );
             },
+            icon: const Icon(Icons.account_circle_outlined),
           ),
           IconButton(
+            tooltip: 'Logout',
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
             icon: const Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
           ),
         ],
       ),
-      body: const Center(
-        child: Text('PIN Security Verified - Dashboard'),
+      body: BlueRedSectionBackground(
+        child: IndexedStack(
+          index: selectedIndex,
+          children: pages,
+        ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
+            label: 'Inventory',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'Customers',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge),
+            label: 'Staff',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.report_problem_outlined),
+            selectedIcon: Icon(Icons.report_problem),
+            label: 'Issues',
+          ),
+        ],
       ),
     );
   }
 }
 
-class InventoryActivityScreen extends StatelessWidget {
-  const InventoryActivityScreen({super.key});
+// ============================================================
+// DASHBOARD
+// ============================================================
+
+class DashboardScreen extends StatelessWidget {
+  const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Inventory Activity')),
-      body: const Center(child: Text('Activity logs')),
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Inventory',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('inventory')
+                .doc('cylinder')
+                .snapshots(),
+            builder: (context, snapshot) {
+              return DashboardInventoryCard(
+                icon: Icons.local_fire_department,
+                title: 'Cylinder',
+                color: const Color(0xFF64B5F6),
+                value: snapshot.hasData && snapshot.data!.exists
+                    ? 'View Stock'
+                    : 'No data',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CylinderDetailScreen(),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          DashboardInventoryCard(
+            icon: Icons.checkroom,
+            title: 'Apron',
+            color: const Color(0xFF64B5F6),
+            value: 'View Stock',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProductDetailScreen(
+                    productId: 'apron',
+                    productName: 'Apron',
+                    icon: Icons.checkroom,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          DashboardInventoryCard(
+            icon: Icons.soup_kitchen_outlined,
+            title: 'Stove',
+            color: const Color(0xFF64B5F6),
+            value: 'View Stock',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProductDetailScreen(
+                    productId: 'stove',
+                    productName: 'Stove',
+                    icon: Icons.soup_kitchen_outlined,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          DashboardInventoryCard(
+            icon: Icons.local_fire_department_outlined,
+            title: 'Lighter',
+            color: const Color(0xFF64B5F6),
+            value: 'View Stock',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProductDetailScreen(
+                    productId: 'lighter',
+                    productName: 'Lighter',
+                    icon: Icons.local_fire_department_outlined,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Upcoming Stock',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const UpcomingStockCard(),
+          const SizedBox(height: 24),
+          const Text(
+            'Stock Arrival History',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const StockArrivalHistory(),
+          const SizedBox(height: 30),
+        ],
+      ),
     );
   }
 }
+
+class DashboardInventoryCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Color color;
+  final String value;
+  final VoidCallback onTap;
+
+  const DashboardInventoryCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// UPCOMING STOCK CARD
+// ============================================================
+
+class NumberField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool enabled;
+
+  const NumberField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+        ),
+      ),
+    );
+  }
+}
+
+class SectionLabel extends StatelessWidget {
+  final String text;
+
+  const SectionLabel({
+    super.key,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 8,
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 60,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 15),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+String number(dynamic value) {
+  if (value == null) return '0';
+
+  if (value is num) {
+    return value.toInt().toString();
+  }
+
+  final parsed = int.tryParse(value.toString());
+
+  return parsed?.toString() ?? '0';
+}
+
+int intValue(String value) {
+  return int.tryParse(value.trim()) ?? 0;
+}
+
+String formatDate(DateTime date) {
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final year = date.year.toString();
+
+  return '$day/$month/$year';
+}
+
+String formatDateTime(DateTime date) {
+  final datePart = formatDate(date);
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$datePart $hour:$minute';
+}
+
 void showMessage(String message) {
   final messenger = scaffoldMessengerKey.currentState;
   if (messenger == null) return;
@@ -1561,3 +2037,46 @@ void showMessage(String message) {
     );
 }
 
+Future<bool?> showDeleteConfirmation(
+  BuildContext context,
+  String message,
+) {
+  bool closing = false;
+
+  return showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Confirm'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (closing) return;
+              closing = true;
+              Navigator.pop(
+                dialogContext,
+                false,
+              );
+            },
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () {
+              if (closing) return;
+              closing = true;
+              Navigator.pop(
+                dialogContext,
+                true,
+              );
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      );
+    },
+  );
+}
