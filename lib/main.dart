@@ -1506,6 +1506,14 @@ class BlueRedSectionBackground extends StatelessWidget {
 // Stubs for future feature modules
 Future<void> checkAndPromptForUpcomingStockReceipt(BuildContext context) async {}
 Future<void> showUpcomingStockDialog(BuildContext context) async {}
+Future<void> logInventoryActivity({
+  required String action,
+  required String section,
+  required String item,
+  required Map<String, dynamic> changes,
+  String source = 'manual',
+  Map<String, dynamic>? actorOverride,
+}) async {}
 class UpcomingStockCard extends StatelessWidget {
   const UpcomingStockCard({super.key});
   @override
@@ -1517,27 +1525,10 @@ class StockArrivalHistory extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Stock Arrival History')), body: const Center(child: Text('History')));
 }
 class InventoryActivityScreen extends StatelessWidget {
-  const InventoryActivityScreen({super.key});
+  final String? filterItem;
+  const InventoryActivityScreen({super.key, this.filterItem});
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Inventory Activity')), body: const Center(child: Text('Activity')));
-}
-class InventoryScreen extends StatelessWidget {
-  const InventoryScreen({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Inventory Module'));
-}
-class CylinderDetailScreen extends StatelessWidget {
-  const CylinderDetailScreen({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Cylinder Detail')), body: const Center(child: Text('Cylinders')));
-}
-class ProductDetailScreen extends StatelessWidget {
-  final String productId;
-  final String productName;
-  final IconData icon;
-  const ProductDetailScreen({super.key, required this.productId, required this.productName, required this.icon});
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(productName)), body: Center(child: Text(productId)));
 }
 class CustomersScreen extends StatelessWidget {
   const CustomersScreen({super.key});
@@ -1882,6 +1873,796 @@ class DashboardInventoryCard extends StatelessWidget {
 
 // ============================================================
 // UPCOMING STOCK CARD
+// ============================================================
+
+class InventoryScreen extends StatelessWidget {
+  const InventoryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        InventoryMenuCard(
+          title: 'Cylinder',
+          subtitle: '14kg, 19kg, 5kg',
+          icon: Icons.local_fire_department,
+          color: Colors.red,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const CylinderDetailScreen(),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        InventoryMenuCard(
+          title: 'Apron',
+          subtitle: 'Stock, Issued, Damaged, Incoming',
+          icon: Icons.checkroom,
+          color: Colors.blue,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProductDetailScreen(
+                  productId: 'apron',
+                  productName: 'Apron',
+                  icon: Icons.checkroom,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        InventoryMenuCard(
+          title: 'Stove',
+          subtitle: 'Stock, Issued, Damaged, Incoming',
+          icon: Icons.soup_kitchen_outlined,
+          color: Colors.orange,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProductDetailScreen(
+                  productId: 'stove',
+                  productName: 'Stove',
+                  icon: Icons.soup_kitchen_outlined,
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        InventoryMenuCard(
+          title: 'Lighter',
+          subtitle: 'Stock, Issued, Damaged, Incoming',
+          icon: Icons.local_fire_department_outlined,
+          color: Colors.deepPurple,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProductDetailScreen(
+                  productId: 'lighter',
+                  productName: 'Lighter',
+                  icon: Icons.local_fire_department_outlined,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class InventoryMenuCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const InventoryMenuCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CYLINDER DETAIL
+// ============================================================
+
+class CylinderDetailScreen extends StatelessWidget {
+  const CylinderDetailScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = FirebaseFirestore.instance.collection('inventory').doc('cylinder');
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Cylinder'),
+        actions: [
+          IconButton(
+            tooltip: 'All Inventory Activity',
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const InventoryActivityScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: BlueRedSectionBackground(
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: ref.snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final data = snapshot.data?.data() ?? {};
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                for (final size in ['14', '19', '5']) ...[
+                  StockSectionCard(
+                    title: '$size kg Cylinder Stock',
+                    trailing: IconButton(
+                      tooltip: '$size kg Activity',
+                      icon: const Icon(Icons.info_outline),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => InventoryActivityScreen(
+                            filterItem: '$size kg Cylinder',
+                          ),
+                        ),
+                      ),
+                    ),
+                    children: [
+                      StockRow(label: 'Total Stock Left', value: number(data['stockLeft$size'])),
+                      StockRow(label: 'Filled Cylinder', value: number(data['filled$size'])),
+                      StockRow(label: 'Empty Cylinder', value: number(data['empty$size'])),
+                      StockRow(label: 'Damaged Cylinder', value: number(data['damaged$size'])),
+                      StockRow(label: 'Undelivered Cylinder', value: number(data['undelivered$size'])),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Stock Rule', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        const Text('For every cylinder size: Total Stock Left = Filled + Empty + Damaged + Undelivered.'),
+                        const SizedBox(height: 6),
+                        Text('Changing any value automatically adjusts the connected value.', style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                FilledButton.icon(
+                  onPressed: () {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!context.mounted) return;
+                      showCylinderEditDialog(context, data);
+                    });
+                  },
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Edit Cylinder Stock'),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class StockSectionCard extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+  final Widget? trailing;
+
+  const StockSectionCard({
+    super.key,
+    required this.title,
+    required this.children,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class StockRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const StockRow({
+    super.key,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 17,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PRODUCT DETAIL - APRON/STOVE/LIGHTER
+// ============================================================
+
+class ProductDetailScreen extends StatelessWidget {
+  final String productId;
+  final String productName;
+  final IconData icon;
+
+  const ProductDetailScreen({
+    super.key,
+    required this.productId,
+    required this.productName,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = FirebaseFirestore.instance
+        .collection('inventory')
+        .doc(productId);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(productName),
+        actions: [
+          IconButton(
+            tooltip: 'Activity',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const InventoryActivityScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: BlueRedSectionBackground(
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: ref.snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final data = snapshot.data?.data() ?? {};
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: Colors.red,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        productName,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              StockSectionCard(
+                title: 'Stock Details',
+                children: [
+                  StockRow(
+                    label: 'Total Stock Left',
+                    value: number(data['stockLeft']),
+                  ),
+                  StockRow(
+                    label: 'Issued',
+                    value: number(data['issued']),
+                  ),
+                  StockRow(
+                    label: 'Damaged',
+                    value: number(data['damaged']),
+                  ),
+                  StockRow(
+                    label: 'Incoming',
+                    value: number(data['incoming']),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!context.mounted) return;
+                    showProductEditDialog(
+                      context,
+                      productId,
+                      productName,
+                      data,
+                    );
+                  });
+                },
+                icon: const Icon(Icons.edit),
+                label: Text('Edit $productName Stock'),
+              ),
+            ],
+          );
+        },
+      ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CUSTOMERS
+// ============================================================
+
+Future<void> showCylinderEditDialog(
+  BuildContext parentContext,
+  Map<String, dynamic> data,
+) async {
+  final fields = <String, TextEditingController>{};
+  for (final size in ['14', '19', '5']) {
+    for (final field in ['stockLeft', 'filled', 'empty', 'damaged', 'undelivered']) {
+      fields['$field$size'] = TextEditingController(text: number(data['$field$size']));
+    }
+  }
+
+  bool syncing = false;
+
+  void setValue(TextEditingController c, int value) {
+    final safe = value < 0 ? 0 : value;
+    final text = safe.toString();
+    c.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+
+  void recalculate(String size, String changed) {
+    if (syncing) return;
+    syncing = true;
+    try {
+      final totalC = fields['stockLeft$size']!;
+      final filledC = fields['filled$size']!;
+      final emptyC = fields['empty$size']!;
+      final damagedC = fields['damaged$size']!;
+      final undeliveredC = fields['undelivered$size']!;
+      final total = intValue(totalC.text);
+      final filled = intValue(filledC.text);
+      final empty = intValue(emptyC.text);
+      final damaged = intValue(damagedC.text);
+      final undelivered = intValue(undeliveredC.text);
+
+      if (changed == 'empty$size') {
+        setValue(totalC, filled + empty + damaged + undelivered);
+      } else {
+        setValue(emptyC, total - filled - damaged - undelivered);
+      }
+    } finally {
+      syncing = false;
+    }
+  }
+
+  final listenerPairs = <({TextEditingController controller, VoidCallback listener})>[];
+  for (final size in ['14', '19', '5']) {
+    for (final field in ['stockLeft', 'filled', 'empty', 'damaged', 'undelivered']) {
+      final controller = fields['$field$size']!;
+      void listener() => recalculate(size, '$field$size');
+      controller.addListener(listener);
+      listenerPairs.add((controller: controller, listener: listener));
+    }
+  }
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              for (final size in ['14', '19', '5']) {
+                final total = intValue(fields['stockLeft$size']!.text);
+                final filled = intValue(fields['filled$size']!.text);
+                final empty = intValue(fields['empty$size']!.text);
+                final damaged = intValue(fields['damaged$size']!.text);
+                final undelivered = intValue(fields['undelivered$size']!.text);
+                if (total < 0 || filled < 0 || empty < 0 || damaged < 0 || undelivered < 0) {
+                  showMessage('Cylinder values cannot be negative.');
+                  return;
+                }
+                if (total != filled + empty + damaged + undelivered) {
+                  showMessage('$size kg stock is not balanced. Total must equal Filled + Empty + Damaged + Undelivered.');
+                  return;
+                }
+              }
+
+              setDialogState(() => saving = true);
+              try {
+                final update = <String, dynamic>{'updatedAt': FieldValue.serverTimestamp()};
+                final activityBySize = <String, Map<String, dynamic>>{};
+                for (final size in ['14', '19', '5']) {
+                  final changesForSize = <String, dynamic>{};
+                  for (final field in ['stockLeft', 'filled', 'empty', 'damaged', 'undelivered']) {
+                    final oldValue = intValue(number(data['$field$size']));
+                    final newValue = intValue(fields['$field$size']!.text);
+                    update['$field$size'] = newValue;
+                    if (oldValue != newValue) {
+                      final label = switch (field) {
+                        'stockLeft' => 'Total Stock Left',
+                        'filled' => 'Filled Cylinder',
+                        'empty' => 'Empty Cylinder',
+                        'damaged' => 'Damaged Cylinder',
+                        'undelivered' => 'Undelivered Cylinder',
+                        _ => field,
+                      };
+                      changesForSize[label] = '$oldValue → $newValue';
+                    }
+                  }
+                  if (changesForSize.isNotEmpty) {
+                    activityBySize['$size kg Cylinder'] = changesForSize;
+                  }
+                }
+                await FirebaseFirestore.instance.collection('inventory').doc('cylinder').set(update, SetOptions(merge: true));
+                for (final entry in activityBySize.entries) {
+                  await logInventoryActivity(
+                    action: 'Stock Updated',
+                    section: 'Cylinder',
+                    item: entry.key,
+                    changes: entry.value,
+                  );
+                }
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (parentContext.mounted) showMessage('Cylinder stock saved successfully.');
+              } catch (e) {
+                setDialogState(() => saving = false);
+                if (dialogContext.mounted) showMessage('Save failed: $e');
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Edit Cylinder Stock'),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const Text('All cylinder values are connected. Edit any field and the related value will update automatically.'),
+                      const SizedBox(height: 14),
+                      for (final size in ['14', '19', '5']) ...[
+                        SectionLabel(text: '$size kg Cylinder'),
+                        NumberField(label: 'Total Stock Left', controller: fields['stockLeft$size']!, enabled: !saving),
+                        NumberField(label: 'Filled Cylinder', controller: fields['filled$size']!, enabled: !saving),
+                        NumberField(label: 'Empty Cylinder', controller: fields['empty$size']!, enabled: !saving),
+                        NumberField(label: 'Damaged Cylinder', controller: fields['damaged$size']!, enabled: !saving),
+                        NumberField(label: 'Undelivered Cylinder', controller: fields['undelivered$size']!, enabled: !saving),
+                        if (size != '5') const SizedBox(height: 12),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () { FocusScope.of(dialogBuilderContext).unfocus(); Navigator.pop(dialogContext); },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    for (final pair in listenerPairs) pair.controller.removeListener(pair.listener);
+    for (final controller in fields.values) controller.dispose();
+  }
+}
+
+// ============================================================
+// DIALOG: PRODUCT EDIT
+// ============================================================
+
+Future<void> showProductEditDialog(
+  BuildContext parentContext,
+  String productId,
+  String productName,
+  Map<String, dynamic> data,
+) async {
+  final stockLeftController = TextEditingController(
+    text: number(data['stockLeft']),
+  );
+  final issuedController = TextEditingController(
+    text: number(data['issued']),
+  );
+  final damagedController = TextEditingController(
+    text: number(data['damaged']),
+  );
+  final incomingController = TextEditingController(
+    text: number(data['incoming']),
+  );
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                final oldStock = intValue(number(data['stockLeft']));
+                final oldIssued = intValue(number(data['issued']));
+                final oldDamaged = intValue(number(data['damaged']));
+                final oldIncoming = intValue(number(data['incoming']));
+                final newStock = intValue(stockLeftController.text);
+                final newIssued = intValue(issuedController.text);
+                final newDamaged = intValue(damagedController.text);
+                final newIncoming = intValue(incomingController.text);
+
+                await FirebaseFirestore.instance
+                    .collection('inventory')
+                    .doc(productId)
+                    .set({
+                  'stockLeft': newStock,
+                  'issued': newIssued,
+                  'damaged': newDamaged,
+                  'incoming': newIncoming,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+
+                final activityChanges = <String, dynamic>{};
+                if (oldStock != newStock) activityChanges['Total Stock Left'] = '$oldStock → $newStock';
+                if (oldIssued != newIssued) activityChanges['Issued'] = '$oldIssued → $newIssued';
+                if (oldDamaged != newDamaged) activityChanges['Damaged'] = '$oldDamaged → $newDamaged';
+                if (oldIncoming != newIncoming) activityChanges['Incoming'] = '$oldIncoming → $newIncoming';
+                if (activityChanges.isNotEmpty) {
+                  await logInventoryActivity(
+                    action: 'Stock Updated',
+                    section: 'Inventory',
+                    item: productName,
+                    changes: activityChanges,
+                  );
+                }
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    '$productName stock saved successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: Text('Edit $productName'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    NumberField(
+                      label: 'Total Stock Left',
+                      controller: stockLeftController,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Issued',
+                      controller: issuedController,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Damaged',
+                      controller: damagedController,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Incoming',
+                      controller: incomingController,
+                      enabled: !saving,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    stockLeftController.dispose();
+    issuedController.dispose();
+    damagedController.dispose();
+    incomingController.dispose();
+  }
+}
+
+// ============================================================
+// DIALOG: UPCOMING STOCK
 // ============================================================
 
 class NumberField extends StatelessWidget {
