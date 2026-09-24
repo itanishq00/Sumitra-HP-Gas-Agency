@@ -3888,13 +3888,497 @@ class StaffTile extends StatelessWidget {
 // ISSUES
 // ============================================================
 
-
-// Stubs for remaining modules
-class IssuesScreen extends StatelessWidget {
+class IssuesScreen extends StatefulWidget {
   const IssuesScreen({super.key});
+
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Issues Module'));
+  State<IssuesScreen> createState() => _IssuesScreenState();
 }
+
+class _IssuesScreenState extends State<IssuesScreen> {
+  String? selectedType;
+
+  @override
+  Widget build(BuildContext context) {
+    final issues = FirebaseFirestore.instance.collection('issues');
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () {
+                showComplaintDialog(context);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Complaint'),
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: issues.orderBy('createdAt', descending: true).snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Issues load nahi ho rahe.\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              final allDocs = snapshot.data?.docs ?? [];
+              final cylinderDocs = allDocs
+                  .where((doc) => doc.data()['type'] == 'Cylinder')
+                  .toList();
+              final stoveDocs = allDocs
+                  .where((doc) => doc.data()['type'] == 'Stove')
+                  .toList();
+
+              final visibleDocs = selectedType == 'Cylinder'
+                  ? cylinderDocs
+                  : selectedType == 'Stove'
+                      ? stoveDocs
+                      : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+                children: [
+                  const Text(
+                    'Complaints',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ComplaintTypeButton(
+                          title: 'Cylinder Complaint',
+                          icon: Icons.local_fire_department,
+                          count: cylinderDocs.length,
+                          selected: selectedType == 'Cylinder',
+                          onTap: () {
+                            setState(() {
+                              selectedType = selectedType == 'Cylinder'
+                                  ? null
+                                  : 'Cylinder';
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ComplaintTypeButton(
+                          title: 'Stove Complaint',
+                          icon: Icons.soup_kitchen_outlined,
+                          count: stoveDocs.length,
+                          selected: selectedType == 'Stove',
+                          onTap: () {
+                            setState(() {
+                              selectedType =
+                                  selectedType == 'Stove' ? null : 'Stove';
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (selectedType != null)
+                    ComplaintCategoryBox(
+                      title: selectedType == 'Cylinder'
+                          ? 'Cylinder Complaints'
+                          : 'Stove Complaints',
+                      icon: selectedType == 'Cylinder'
+                          ? Icons.local_fire_department
+                          : Icons.soup_kitchen_outlined,
+                      docs: visibleDocs,
+                    )
+                  else
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.touch_app_outlined,
+                              color: Colors.blue.shade700,
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Cylinder ya Stove complaint box par tap karke complaints dekhein.',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ComplaintTypeButton extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const ComplaintTypeButton({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEAF4FF) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFF1976D2)
+                  : Colors.grey.shade300,
+              width: selected ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                size: 32,
+                color: const Color(0xFF64B5F6),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '$count complaint${count == 1 ? '' : 's'}',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text(
+                    selected ? 'Opened' : 'Tap to open',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: selected
+                          ? const Color(0xFF1976D2)
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    selected
+                        ? Icons.keyboard_arrow_up
+                        : Icons.arrow_forward_ios,
+                    size: 18,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ComplaintCategoryBox extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+
+  const ComplaintCategoryBox({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.docs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final urgent = docs
+        .where((doc) => doc.data()['priority'] == 'Urgent')
+        .toList();
+
+    final medium = docs
+        .where((doc) => doc.data()['priority'] == 'Medium')
+        .toList();
+
+    final low = docs
+        .where((doc) => doc.data()['priority'] == 'Low')
+        .toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: Colors.red,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ComplaintPrioritySection(
+              title: 'Urgent',
+              docs: urgent,
+              background: Colors.red.shade50,
+              borderColor: Colors.red.shade800,
+            ),
+            const SizedBox(height: 10),
+            ComplaintPrioritySection(
+              title: 'Medium',
+              docs: medium,
+              background: Colors.orange.shade50,
+              borderColor: Colors.orange.shade800,
+            ),
+            const SizedBox(height: 10),
+            ComplaintPrioritySection(
+              title: 'Low',
+              docs: low,
+              background: Colors.yellow.shade50,
+              borderColor: Colors.amber.shade800,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ComplaintPrioritySection extends StatelessWidget {
+  final String title;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+  final Color background;
+  final Color borderColor;
+
+  const ComplaintPrioritySection({
+    super.key,
+    required this.title,
+    required this.docs,
+    required this.background,
+    required this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: background,
+        border: Border.all(
+          color: borderColor,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: borderColor,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${docs.length}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: borderColor,
+                ),
+              ),
+            ],
+          ),
+          if (docs.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'No complaints',
+                style: TextStyle(
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ...docs.map(
+            (doc) => ComplaintTile(
+              doc: doc,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ComplaintTile extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+
+  const ComplaintTile({
+    super.key,
+    required this.doc,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data['title'] ?? 'Complaint',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  data['details'] ?? '',
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Customer: ${data['customerName'] ?? ''}',
+                  style: const TextStyle(
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Status: ${data['status'] ?? 'Open'}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () async {
+              final confirm = await showDeleteConfirmation(
+                context,
+                'Delete this complaint?',
+              );
+
+              if (confirm == true) {
+                try {
+                  await doc.reference.delete();
+
+                  if (context.mounted) {
+                    showMessage(
+                      'Complaint deleted.',
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    showMessage(
+                      'Delete failed: $e',
+                    );
+                  }
+                }
+              }
+            },
+            icon: const Icon(
+              Icons.delete_outline,
+              color: Colors.red,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// DIALOG: CYLINDER EDIT
+// IMPORTANT FIX:
+// parentContext is intentionally different from dialog context.
+// Wrapped in StatefulBuilder so the buttons can be disabled and
+// focus can be cleared *before* the dialog is popped, which avoids
+// the "_dependents.isEmpty" framework assertion that happens when a
+// route is popped while a TextField inside it still holds focus.
+// ============================================================
+
 Future<void> showCylinderEditDialog(
   BuildContext parentContext,
   Map<String, dynamic> data,
@@ -5075,6 +5559,270 @@ Future<void> showStaffDialog(
 
 // ============================================================
 // DIALOG: COMPLAINT
+// ============================================================
+
+Future<void> showComplaintDialog(
+  BuildContext parentContext,
+) async {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> customers;
+
+  try {
+    final customerSnapshot = await FirebaseFirestore.instance
+        .collection('customers')
+        .orderBy('name')
+        .get();
+
+    customers = customerSnapshot.docs;
+  } catch (e) {
+    if (parentContext.mounted) {
+      showMessage(
+        'Customers load nahi ho pa rahe: $e',
+      );
+    }
+    return;
+  }
+
+  if (customers.isEmpty) {
+    if (parentContext.mounted) {
+      showMessage(
+        'Complaint add karne se pehle customer add karo.',
+      );
+    }
+    return;
+  }
+
+  final titleController = TextEditingController();
+  final detailsController = TextEditingController();
+
+  String type = 'Cylinder';
+  String priority = 'Urgent';
+  String? customerId = customers.first.id;
+  String customerName =
+      customers.first.data()['name'] ?? '';
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              if (titleController.text.trim().isEmpty) {
+                showMessage(
+                  'Complaint title required hai.',
+                );
+                return;
+              }
+
+              if (customerId == null) {
+                showMessage(
+                  'Customer select karo.',
+                );
+                return;
+              }
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                await FirebaseFirestore.instance
+                    .collection('issues')
+                    .add({
+                  'type': type,
+                  'title':
+                      titleController.text.trim(),
+                  'details':
+                      detailsController.text.trim(),
+                  'priority': priority,
+                  'customerId': customerId,
+                  'customerName': customerName,
+                  'status': 'Open',
+                  'createdAt':
+                      FieldValue.serverTimestamp(),
+                });
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    'Complaint added successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Add Complaint'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: type,
+                      decoration: const InputDecoration(
+                        labelText: 'Complaint Type',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Cylinder',
+                          child: Text('Cylinder'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Stove',
+                          child: Text('Stove'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  type = value;
+                                });
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: titleController,
+                      enabled: !saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Complaint Title',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: detailsController,
+                      enabled: !saving,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Details',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: priority,
+                      decoration: const InputDecoration(
+                        labelText: 'Priority',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Urgent',
+                          child: Text('Urgent'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Medium',
+                          child: Text('Medium'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Low',
+                          child: Text('Low'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  priority = value;
+                                });
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: customerId,
+                      decoration: const InputDecoration(
+                        labelText: 'Customer',
+                      ),
+                      items: customers.map((customer) {
+                        final customerData =
+                            customer.data();
+
+                        return DropdownMenuItem<String>(
+                          value: customer.id,
+                          child: Text(
+                            customerData['name'] ?? '',
+                            overflow:
+                                TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+
+                              final selected =
+                                  customers.firstWhere(
+                                (customer) =>
+                                    customer.id == value,
+                              );
+
+                              setDialogState(() {
+                                customerId = value;
+                                customerName =
+                                    selected.data()['name'] ?? '';
+                              });
+                            },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    titleController.dispose();
+    detailsController.dispose();
+  }
+}
+
+// ============================================================
+// DELETE CUSTOMER
 // ============================================================
 
 Future<void> deleteCustomer(
