@@ -1502,10 +1502,39 @@ class BlueRedSectionBackground extends StatelessWidget {
 // Firebase account and matching staff profile (when available).
 // ============================================================
 
+Future<Map<String, dynamic>> _currentActorInfo() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    return {
+      'changedByUid': 'system',
+      'changedByName': 'System',
+      'changedByEmail': '',
+    };
+  }
 
-// Stubs for future feature modules
-Future<void> checkAndPromptForUpcomingStockReceipt(BuildContext context) async {}
-Future<void> showUpcomingStockDialog(BuildContext context) async {}
+  String name = user.email?.split('@').first ?? 'Staff';
+  try {
+    final staffQuery = await FirebaseFirestore.instance
+        .collection('staff')
+        .where('email', isEqualTo: user.email)
+        .limit(1)
+        .get();
+    if (staffQuery.docs.isNotEmpty) {
+      final staffData = staffQuery.docs.first.data();
+      final staffName = (staffData['name'] ?? '').toString().trim();
+      if (staffName.isNotEmpty) name = staffName;
+    }
+  } catch (_) {
+    // Email is still enough to identify the signed-in account.
+  }
+
+  return {
+    'changedByUid': user.uid,
+    'changedByName': name,
+    'changedByEmail': user.email ?? '',
+  };
+}
+
 Future<void> logInventoryActivity({
   required String action,
   required String section,
@@ -1513,7 +1542,671 @@ Future<void> logInventoryActivity({
   required Map<String, dynamic> changes,
   String source = 'manual',
   Map<String, dynamic>? actorOverride,
-}) async {}
+}) async {
+  try {
+    final actor = actorOverride ?? await _currentActorInfo();
+    await FirebaseFirestore.instance.collection('inventoryActivity').add({
+      'action': action,
+      'section': section,
+      'item': item,
+      'changes': changes,
+      ...actor,
+      'source': source,
+      'changedAt': FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    debugPrint('Inventory activity log failed: $e');
+  }
+}
+
+class InventoryActivityScreen extends StatelessWidget {
+  final String? filterItem;
+
+  const InventoryActivityScreen({super.key, this.filterItem});
+
+  String _time(dynamic value) {
+    if (value is Timestamp) return formatDateTime(value.toDate());
+    return 'Just now';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = FirebaseFirestore.instance
+        .collection('inventoryActivity')
+        .orderBy('changedAt', descending: true)
+        .limit(100)
+        .snapshots();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          filterItem == null ? 'Inventory Activity' : '$filterItem Activity',
+        ),
+      ),
+      body: BlueRedSectionBackground(
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: stream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Activity load nahi ho pa rahi.\n${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = (snapshot.data?.docs ?? []).where((doc) {
+              if (filterItem == null) return true;
+              return (doc.data()['item'] ?? '') == filterItem;
+            }).toList();
+
+            if (docs.isEmpty) {
+              return const Center(
+                child: Text('Abhi koi activity nahi hai.'),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final data = docs[index].data();
+                final changes = Map<String, dynamic>.from(
+                  data['changes'] is Map ? data['changes'] as Map : {},
+                );
+                final email = (data['changedByEmail'] ?? '').toString();
+                final item = (data['item'] ?? 'Inventory').toString();
+                final time = _time(data['changedAt']);
+
+                final changeText = changes.entries.map((entry) {
+                  return '${entry.key}: ${entry.value}';
+                }).join('\n');
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.info_outline),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _ActivityDetailRow(
+                          label: 'Updated by',
+                          value: email.isEmpty ? 'Unknown' : email,
+                        ),
+                        _ActivityDetailRow(
+                          label: 'Date & Time',
+                          value: time,
+                        ),
+                        _ActivityDetailRow(
+                          label: 'Change',
+                          value: changeText.isEmpty ? 'Stock updated' : changeText,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ActivityDetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// UPCOMING STOCK RECEIPT CONFIRMATION
+// On/after the scheduled arrival date, the first app open of that
+// day asks what was actually received. Only the confirmed quantities
+// are moved into current inventory. Partial receipt is supported.
+// ============================================================
+
+Future<void> checkAndPromptForUpcomingStockReceipt(
+  BuildContext context,
+) async {
+  final firestore = FirebaseFirestore.instance;
+  final ref = firestore.collection('inventory').doc('upcomingStock');
+
+  try {
+    final snapshot = await ref.get();
+    if (!snapshot.exists || !context.mounted) return;
+
+    final data = snapshot.data();
+    if (data == null) return;
+
+    final arrivalTimestamp = data['arrivalDate'] as Timestamp?;
+    if (arrivalTimestamp == null) return;
+
+    final arrivalDate = arrivalTimestamp.toDate();
+    final now = DateTime.now();
+    final arrivalDay = DateTime(
+      arrivalDate.year,
+      arrivalDate.month,
+      arrivalDate.day,
+    );
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Do nothing until the scheduled date arrives.
+    if (arrivalDay.isAfter(today)) return;
+
+    // Show the prompt only once per calendar day. If the stock has not
+    // arrived, it can be asked again on the next day.
+    final promptedTimestamp = data['receiptPromptedOn'] as Timestamp?;
+    if (promptedTimestamp != null) {
+      final promptedDay = promptedTimestamp.toDate();
+      final promptedDate = DateTime(
+        promptedDay.year,
+        promptedDay.month,
+        promptedDay.day,
+      );
+      if (promptedDate == today) return;
+    }
+
+    await showUpcomingStockReceiptDialog(
+      context,
+      upcomingData: data,
+      upcomingRef: ref,
+      arrivalDay: arrivalDay,
+    );
+  } catch (e) {
+    debugPrint('Upcoming stock receipt check failed: $e');
+  }
+}
+
+Future<void> showUpcomingStockReceiptDialog(
+  BuildContext parentContext, {
+  required Map<String, dynamic> upcomingData,
+  required DocumentReference<Map<String, dynamic>> upcomingRef,
+  required DateTime arrivalDay,
+}) async {
+  const itemLabels = <String, String>{
+    'cylinder14': '14kg Cylinder',
+    'cylinder19': '19kg Cylinder',
+    'cylinder5': '5kg Cylinder',
+    'apron': 'Apron',
+    'stove': 'Stove',
+    'lighter': 'Lighter',
+  };
+
+  int ordered(String key) => intValue(number(upcomingData[key]));
+
+  final orderedQuantities = <String, int>{
+    for (final key in itemLabels.keys) key: ordered(key),
+  };
+
+  final receivedControllers = <String, TextEditingController>{
+    for (final key in itemLabels.keys)
+      key: TextEditingController(
+        text: orderedQuantities[key]!.toString(),
+      ),
+  };
+
+  final selected = <String, bool>{
+    for (final key in itemLabels.keys) key: orderedQuantities[key]! > 0,
+  };
+
+  bool receivedConfirmed = false;
+  bool saving = false;
+
+  try {
+    await showDialog(
+      context: parentContext,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> markNotReceived() async {
+              if (saving) return;
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                await upcomingRef.set({
+                  'receiptPromptedOn': Timestamp.fromDate(
+                    DateTime.now(),
+                  ),
+                  'lastReceiptCheck': 'not_received',
+                  'lastReceiptCheckedAt': FieldValue.serverTimestamp(),
+                  'lastReceiptCheckedBy':
+                      FirebaseAuth.instance.currentUser?.email ?? '',
+                }, SetOptions(merge: true));
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage('Save failed: $e');
+                }
+              }
+            }
+
+            Future<void> confirmReceived() async {
+              if (saving) return;
+
+              final received = <String, int>{};
+
+              for (final key in itemLabels.keys) {
+                if (!selected[key]!) {
+                  received[key] = 0;
+                  continue;
+                }
+
+                final value = intValue(
+                  receivedControllers[key]!.text,
+                );
+
+                if (value < 0 || value > orderedQuantities[key]!) {
+                  showMessage(
+                    '${itemLabels[key]} received quantity ordered quantity se zyada nahi ho sakti.',
+                  );
+                  return;
+                }
+
+                received[key] = value;
+              }
+
+              final totalReceived = received.values.fold<int>(
+                0,
+                (sum, value) => sum + value,
+              );
+
+              if (totalReceived <= 0) {
+                showMessage('Kam se kam ek received quantity select karo.');
+                return;
+              }
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                await FirebaseFirestore.instance.runTransaction(
+                  (transaction) async {
+                    final latestUpcoming =
+                        await transaction.get(upcomingRef);
+
+                    if (!latestUpcoming.exists) {
+                      throw Exception(
+                        'Upcoming stock record already processed.',
+                      );
+                    }
+
+                    final latestData =
+                        latestUpcoming.data() ?? <String, dynamic>{};
+
+                    int latestValue(String key) =>
+                        intValue(number(latestData[key]));
+
+                    final remaining = <String, int>{};
+                    for (final key in itemLabels.keys) {
+                      remaining[key] =
+                          (latestValue(key) - received[key]!).clamp(0, 999999999).toInt();
+                    }
+
+                    final cylinderRef = firestoreRef('cylinder');
+                    final apronRef = firestoreRef('apron');
+                    final stoveRef = firestoreRef('stove');
+                    final lighterRef = firestoreRef('lighter');
+
+                    final cylinderSnapshot =
+                        await transaction.get(cylinderRef);
+                    final apronSnapshot = await transaction.get(apronRef);
+                    final stoveSnapshot = await transaction.get(stoveRef);
+                    final lighterSnapshot = await transaction.get(lighterRef);
+
+                    final cylinderData =
+                        cylinderSnapshot.data() ?? <String, dynamic>{};
+                    final apronData =
+                        apronSnapshot.data() ?? <String, dynamic>{};
+                    final stoveData =
+                        stoveSnapshot.data() ?? <String, dynamic>{};
+                    final lighterData =
+                        lighterSnapshot.data() ?? <String, dynamic>{};
+
+                    int current(dynamic raw) => intValue(number(raw));
+
+                    transaction.set(
+                      cylinderRef,
+                      {
+                        'stockLeft14':
+                            current(cylinderData['stockLeft14']) +
+                                received['cylinder14']!,
+                        'stockLeft19':
+                            current(cylinderData['stockLeft19']) +
+                                received['cylinder19']!,
+                        'stockLeft5':
+                            current(cylinderData['stockLeft5']) +
+                                received['cylinder5']!,
+                        'empty14':
+                            current(cylinderData['empty14']) +
+                                received['cylinder14']!,
+                        'empty19':
+                            current(cylinderData['empty19']) +
+                                received['cylinder19']!,
+                        'empty5':
+                            current(cylinderData['empty5']) +
+                                received['cylinder5']!,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      },
+                      SetOptions(merge: true),
+                    );
+
+                    transaction.set(
+                      apronRef,
+                      {
+                        'stockLeft':
+                            current(apronData['stockLeft']) +
+                                received['apron']!,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      },
+                      SetOptions(merge: true),
+                    );
+
+                    transaction.set(
+                      stoveRef,
+                      {
+                        'stockLeft':
+                            current(stoveData['stockLeft']) +
+                                received['stove']!,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      },
+                      SetOptions(merge: true),
+                    );
+
+                    transaction.set(
+                      lighterRef,
+                      {
+                        'stockLeft':
+                            current(lighterData['stockLeft']) +
+                                received['lighter']!,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      },
+                      SetOptions(merge: true),
+                    );
+
+                    final historyRef =
+                        FirebaseFirestore.instance.collection('stockArrivals').doc();
+
+                    transaction.set(historyRef, {
+                      'date': Timestamp.fromDate(arrivalDay),
+                      'cylinder14': received['cylinder14'],
+                      'cylinder19': received['cylinder19'],
+                      'cylinder5': received['cylinder5'],
+                      'apron': received['apron'],
+                      'stove': received['stove'],
+                      'lighter': received['lighter'],
+                      'orderedCylinder14': orderedQuantities['cylinder14'],
+                      'orderedCylinder19': orderedQuantities['cylinder19'],
+                      'orderedCylinder5': orderedQuantities['cylinder5'],
+                      'orderedApron': orderedQuantities['apron'],
+                      'orderedStove': orderedQuantities['stove'],
+                      'orderedLighter': orderedQuantities['lighter'],
+                      'createdAt': FieldValue.serverTimestamp(),
+                      'source': 'upcomingStock',
+                      'automatic': false,
+                      'receivedBy':
+                          FirebaseAuth.instance.currentUser?.email ?? '',
+                      'receiptConfirmed': true,
+                    });
+
+                    final allReceived = remaining.values.every(
+                      (value) => value == 0,
+                    );
+
+                    if (allReceived) {
+                      transaction.delete(upcomingRef);
+                    } else {
+                      transaction.set(
+                        upcomingRef,
+                        {
+                          'cylinder14': remaining['cylinder14'],
+                          'cylinder19': remaining['cylinder19'],
+                          'cylinder5': remaining['cylinder5'],
+                          'apron': remaining['apron'],
+                          'stove': remaining['stove'],
+                          'lighter': remaining['lighter'],
+                          'receiptPromptedOn': Timestamp.fromDate(
+                            DateTime.now(),
+                          ),
+                          'lastReceiptCheck': 'partial',
+                          'lastReceiptCheckedAt':
+                              FieldValue.serverTimestamp(),
+                          'lastReceiptCheckedBy':
+                              FirebaseAuth.instance.currentUser?.email ?? '',
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        },
+                        SetOptions(merge: true),
+                      );
+                    }
+                  },
+                );
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    'Received stock inventory mein update ho gaya.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage('Stock receive save failed: $e');
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Stock Receive Confirmation'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Aaj ${formatDate(arrivalDay)} ka stock scheduled hai.',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Kya ordered stock receive hua hai? Inventory mein sirf wahi quantity add hogi jo aap yahan confirm karoge.',
+                    ),
+                    const SizedBox(height: 16),
+                    if (!receivedConfirmed) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: saving
+                              ? null
+                              : () {
+                                  setDialogState(() {
+                                    receivedConfirmed = true;
+                                  });
+                                },
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('Haan, stock receive hua'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: saving ? null : markNotReceived,
+                          icon: const Icon(Icons.schedule),
+                          label: const Text('Nahi, abhi receive nahi hua'),
+                        ),
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Jo items receive hue hain unhe tick karo. Quantity kam receive hui ho to actual quantity enter karo.',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      for (final key in itemLabels.keys)
+                        if (orderedQuantities[key]! > 0)
+                          Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: selected[key],
+                                    onChanged: saving
+                                        ? null
+                                        : (value) {
+                                            setDialogState(() {
+                                              selected[key] = value ?? false;
+                                            });
+                                          },
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      '${itemLabels[key]}\nOrdered: ${orderedQuantities[key]}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 90,
+                                    child: TextField(
+                                      controller: receivedControllers[key],
+                                      enabled: !saving && selected[key]!,
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Received',
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                if (receivedConfirmed)
+                  TextButton(
+                    onPressed: saving
+                        ? null
+                        : () {
+                            setDialogState(() {
+                              receivedConfirmed = false;
+                            });
+                          },
+                    child: const Text('Back'),
+                  ),
+                if (receivedConfirmed)
+                  FilledButton.icon(
+                    onPressed: saving ? null : confirmReceived,
+                    icon: const Icon(Icons.inventory_2),
+                    label: const Text('Confirm & Update Inventory'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    for (final controller in receivedControllers.values) {
+      controller.dispose();
+    }
+  }
+}
+
+DocumentReference<Map<String, dynamic>> firestoreRef(String productId) {
+  return FirebaseFirestore.instance
+      .collection('inventory')
+      .doc(productId);
+}
+
+// ============================================================
+// MAIN SCREEN - EXACTLY 5 TABS
+// ============================================================
+
+
+// Stubs for future feature modules
+Future<void> showUpcomingStockDialog(BuildContext context) async {}
 class UpcomingStockCard extends StatelessWidget {
   const UpcomingStockCard({super.key});
   @override
@@ -1523,12 +2216,6 @@ class StockArrivalHistory extends StatelessWidget {
   const StockArrivalHistory({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Stock Arrival History')), body: const Center(child: Text('History')));
-}
-class InventoryActivityScreen extends StatelessWidget {
-  final String? filterItem;
-  const InventoryActivityScreen({super.key, this.filterItem});
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Inventory Activity')), body: const Center(child: Text('Activity')));
 }
 class CustomersScreen extends StatelessWidget {
   const CustomersScreen({super.key});
