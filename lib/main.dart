@@ -2204,34 +2204,6 @@ DocumentReference<Map<String, dynamic>> firestoreRef(String productId) {
 // MAIN SCREEN - EXACTLY 5 TABS
 // ============================================================
 
-
-// Stubs for future feature modules
-Future<void> showUpcomingStockDialog(BuildContext context) async {}
-class UpcomingStockCard extends StatelessWidget {
-  const UpcomingStockCard({super.key});
-  @override
-  Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Upcoming Stock')));
-}
-class StockArrivalHistory extends StatelessWidget {
-  const StockArrivalHistory({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Stock Arrival History')), body: const Center(child: Text('History')));
-}
-class CustomersScreen extends StatelessWidget {
-  const CustomersScreen({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Customers Module'));
-}
-class StaffScreen extends StatelessWidget {
-  const StaffScreen({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Staff Module'));
-}
-class IssuesScreen extends StatelessWidget {
-  const IssuesScreen({super.key});
-  @override
-  Widget build(BuildContext context) => const Center(child: Text('Issues Module'));
-}
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -2560,6 +2532,576 @@ class DashboardInventoryCard extends StatelessWidget {
 
 // ============================================================
 // UPCOMING STOCK CARD
+// ============================================================
+
+class UpcomingStockCard extends StatelessWidget {
+  const UpcomingStockCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = FirebaseFirestore.instance
+        .collection('inventory')
+        .doc('upcomingStock');
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: ref.snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
+        final data = snapshot.data?.data();
+
+        if (data == null) {
+          return Card(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!context.mounted) return;
+                  showUpcomingStockDialog(context);
+                });
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.local_shipping_outlined,
+                      size: 34,
+                      color: Colors.red,
+                    ),
+                    SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'No upcoming stock added.\nTap to add.',
+                      ),
+                    ),
+                    Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final Timestamp? timestamp =
+            data['arrivalDate'] as Timestamp?;
+
+        final date = timestamp?.toDate();
+
+        return Card(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!context.mounted) return;
+                showUpcomingStockDialog(context);
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.local_shipping_outlined,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Next Stock Arrival',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              date == null
+                                  ? 'Date not set'
+                                  : formatDate(date),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.edit_outlined),
+                    ],
+                  ),
+                  const Divider(height: 28),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      SmallStockChip(
+                        label: '14kg',
+                        value: number(data['cylinder14']),
+                      ),
+                      SmallStockChip(
+                        label: '19kg',
+                        value: number(data['cylinder19']),
+                      ),
+                      SmallStockChip(
+                        label: '5kg',
+                        value: number(data['cylinder5']),
+                      ),
+                      SmallStockChip(
+                        label: 'Apron',
+                        value: number(data['apron']),
+                      ),
+                      SmallStockChip(
+                        label: 'Stove',
+                        value: number(data['stove']),
+                      ),
+                      SmallStockChip(
+                        label: 'Lighter',
+                        value: number(data['lighter']),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SmallStockChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const SmallStockChip({
+    super.key,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// STOCK ARRIVAL HISTORY
+// ============================================================
+
+class StockArrivalHistory extends StatefulWidget {
+  const StockArrivalHistory({super.key});
+
+  @override
+  State<StockArrivalHistory> createState() => _StockArrivalHistoryState();
+}
+
+class _StockArrivalHistoryState extends State<StockArrivalHistory> {
+  late int selectedYear;
+  late int selectedMonth;
+
+  static const List<String> monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    selectedYear = now.year;
+    selectedMonth = now.month;
+  }
+
+  void changeYear(int amount) {
+    setState(() {
+      selectedYear += amount;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final oneYearAgo = DateTime.now().subtract(
+      const Duration(days: 365),
+    );
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('stockArrivals')
+          .where(
+            'date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(oneYearAgo),
+          )
+          .orderBy('date', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Text(
+                'Stock history load nahi ho pa rahi.\n${snapshot.error}',
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        final selectedDocs = docs.where((doc) {
+          final timestamp = doc.data()['date'] as Timestamp?;
+          if (timestamp == null) return false;
+          final date = timestamp.toDate();
+          return date.year == selectedYear && date.month == selectedMonth;
+        }).toList();
+
+        int totalFor(String field) {
+          return selectedDocs.fold<int>(
+            0,
+            (sum, doc) => sum + intValue(number(doc.data()[field])),
+          );
+        }
+
+        final totals = <String, int>{
+          '14kg': totalFor('cylinder14'),
+          '19kg': totalFor('cylinder19'),
+          '5kg': totalFor('cylinder5'),
+          'Apron': totalFor('apron'),
+          'Stove': totalFor('stove'),
+          'Lighter': totalFor('lighter'),
+        };
+
+        return Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: () {
+                  showStockArrivalDialog(context);
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Stock Arrival'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Previous year',
+                          onPressed: () => changeYear(-1),
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '$selectedYear',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Next year',
+                          onPressed: () => changeYear(1),
+                          icon: const Icon(Icons.chevron_right),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 12,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1.65,
+                      ),
+                      itemBuilder: (context, index) {
+                        final month = index + 1;
+                        final hasArrival = docs.any((doc) {
+                          final timestamp = doc.data()['date'] as Timestamp?;
+                          if (timestamp == null) return false;
+                          final date = timestamp.toDate();
+                          return date.year == selectedYear &&
+                              date.month == month;
+                        });
+                        final selected = month == selectedMonth;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            setState(() {
+                              selectedMonth = month;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? const Color(0xFF64B5F6)
+                                  : hasArrival
+                                      ? const Color(0xFFEAF4FF)
+                                      : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: selected
+                                    ? const Color(0xFF1976D2)
+                                    : hasArrival
+                                        ? const Color(0xFF90CAF9)
+                                        : Colors.grey.shade300,
+                                width: selected ? 2 : 1,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              monthNames[index].substring(0, 3),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: selected
+                                    ? Colors.white
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${monthNames[selectedMonth - 1]} $selectedYear',
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (selectedDocs.isEmpty)
+                      const Text(
+                        'Is month mein koi stock arrival record nahi hai.',
+                      )
+                    else ...[
+                      const Text(
+                        'Total stock received this month',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final entry in totals.entries)
+                            if (entry.value > 0)
+                              SmallStockChip(
+                                label: entry.key,
+                                value: '${entry.value}',
+                              ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      ...selectedDocs.map(
+                        (doc) => StockArrivalTile(doc: doc),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class StockArrivalTile extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+
+  const StockArrivalTile({
+    super.key,
+    required this.doc,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data();
+    final Timestamp? timestamp = data['date'] as Timestamp?;
+    final date = timestamp?.toDate();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.local_shipping,
+                  color: Colors.red,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    date == null
+                        ? 'Date not set'
+                        : formatDate(date),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () async {
+                    final confirm = await showDeleteConfirmation(
+                      context,
+                      'Delete this stock arrival record?',
+                    );
+
+                    if (confirm == true) {
+                      try {
+                        await doc.reference.delete();
+
+                        if (context.mounted) {
+                          showMessage(
+                            'Stock arrival deleted.',
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showMessage(
+                            'Delete failed: $e',
+                          );
+                        }
+                      }
+                    }
+                  },
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SmallStockChip(
+                  label: '14kg',
+                  value: number(data['cylinder14']),
+                ),
+                SmallStockChip(
+                  label: '19kg',
+                  value: number(data['cylinder19']),
+                ),
+                SmallStockChip(
+                  label: '5kg',
+                  value: number(data['cylinder5']),
+                ),
+                SmallStockChip(
+                  label: 'Apron',
+                  value: number(data['apron']),
+                ),
+                SmallStockChip(
+                  label: 'Stove',
+                  value: number(data['stove']),
+                ),
+                SmallStockChip(
+                  label: 'Lighter',
+                  value: number(data['lighter']),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// INVENTORY
 // ============================================================
 
 class InventoryScreen extends StatelessWidget {
@@ -3020,6 +3562,23 @@ class ProductDetailScreen extends StatelessWidget {
 // CUSTOMERS
 // ============================================================
 
+
+// Stubs for remaining modules
+class CustomersScreen extends StatelessWidget {
+  const CustomersScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Customers Module'));
+}
+class StaffScreen extends StatelessWidget {
+  const StaffScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Staff Module'));
+}
+class IssuesScreen extends StatelessWidget {
+  const IssuesScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Issues Module'));
+}
 Future<void> showCylinderEditDialog(
   BuildContext parentContext,
   Map<String, dynamic> data,
@@ -3350,6 +3909,434 @@ Future<void> showProductEditDialog(
 
 // ============================================================
 // DIALOG: UPCOMING STOCK
+// ============================================================
+
+Future<void> showUpcomingStockDialog(
+  BuildContext parentContext,
+) async {
+  final ref = FirebaseFirestore.instance
+      .collection('inventory')
+      .doc('upcomingStock');
+
+  DocumentSnapshot<Map<String, dynamic>> snapshot;
+
+  try {
+    snapshot = await ref.get();
+  } catch (e) {
+    if (parentContext.mounted) {
+      showMessage(
+        'Upcoming stock load failed: $e',
+      );
+    }
+    return;
+  }
+
+  final data = snapshot.data() ?? {};
+
+  DateTime selectedDate =
+      (data['arrivalDate'] as Timestamp?)?.toDate() ??
+          DateTime.now();
+
+  final controllers = <String, TextEditingController>{
+    'cylinder14': TextEditingController(
+      text: number(data['cylinder14']),
+    ),
+    'cylinder19': TextEditingController(
+      text: number(data['cylinder19']),
+    ),
+    'cylinder5': TextEditingController(
+      text: number(data['cylinder5']),
+    ),
+    'apron': TextEditingController(
+      text: number(data['apron']),
+    ),
+    'stove': TextEditingController(
+      text: number(data['stove']),
+    ),
+    'lighter': TextEditingController(
+      text: number(data['lighter']),
+    ),
+  };
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                await ref.set({
+                  'arrivalDate':
+                      Timestamp.fromDate(selectedDate),
+                  'cylinder14':
+                      intValue(
+                    controllers['cylinder14']!.text,
+                  ),
+                  'cylinder19':
+                      intValue(
+                    controllers['cylinder19']!.text,
+                  ),
+                  'cylinder5':
+                      intValue(
+                    controllers['cylinder5']!.text,
+                  ),
+                  'apron':
+                      intValue(
+                    controllers['apron']!.text,
+                  ),
+                  'stove':
+                      intValue(
+                    controllers['stove']!.text,
+                  ),
+                  'lighter':
+                      intValue(
+                    controllers['lighter']!.text,
+                  ),
+                  'updatedAt':
+                      FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    'Upcoming stock saved successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Upcoming Stock'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.calendar_month,
+                      ),
+                      title: const Text(
+                        'Next Stock Arrival',
+                      ),
+                      subtitle: Text(
+                        formatDate(selectedDate),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                      ),
+                      onTap: saving
+                          ? null
+                          : () async {
+                              // Clear focus before opening a nested
+                              // route (the date picker) too.
+                              FocusScope.of(dialogBuilderContext)
+                                  .unfocus();
+
+                              final picked =
+                                  await showDatePicker(
+                                context: dialogBuilderContext,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+
+                              if (picked != null) {
+                                setDialogState(() {
+                                  selectedDate = picked;
+                                });
+                              }
+                            },
+                    ),
+                    const Divider(),
+                    NumberField(
+                      label: '14kg Cylinder',
+                      controller: controllers['cylinder14']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: '19kg Cylinder',
+                      controller: controllers['cylinder19']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: '5kg Cylinder',
+                      controller: controllers['cylinder5']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Apron',
+                      controller: controllers['apron']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Stove',
+                      controller: controllers['stove']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Lighter',
+                      controller: controllers['lighter']!,
+                      enabled: !saving,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+  }
+}
+
+// ============================================================
+// DIALOG: STOCK ARRIVAL
+// ============================================================
+
+Future<void> showStockArrivalDialog(
+  BuildContext parentContext,
+) async {
+  DateTime selectedDate = DateTime.now();
+
+  final controllers = <String, TextEditingController>{
+    'cylinder14': TextEditingController(),
+    'cylinder19': TextEditingController(),
+    'cylinder5': TextEditingController(),
+    'apron': TextEditingController(),
+    'stove': TextEditingController(),
+    'lighter': TextEditingController(),
+  };
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                await FirebaseFirestore.instance
+                    .collection('stockArrivals')
+                    .add({
+                  'date':
+                      Timestamp.fromDate(selectedDate),
+                  'cylinder14':
+                      intValue(
+                    controllers['cylinder14']!.text,
+                  ),
+                  'cylinder19':
+                      intValue(
+                    controllers['cylinder19']!.text,
+                  ),
+                  'cylinder5':
+                      intValue(
+                    controllers['cylinder5']!.text,
+                  ),
+                  'apron':
+                      intValue(
+                    controllers['apron']!.text,
+                  ),
+                  'stove':
+                      intValue(
+                    controllers['stove']!.text,
+                  ),
+                  'lighter':
+                      intValue(
+                    controllers['lighter']!.text,
+                  ),
+                  'createdAt':
+                      FieldValue.serverTimestamp(),
+                });
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    'Stock arrival saved successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Add Stock Arrival'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.calendar_month,
+                      ),
+                      title: const Text('Arrival Date'),
+                      subtitle: Text(
+                        formatDate(selectedDate),
+                      ),
+                      onTap: saving
+                          ? null
+                          : () async {
+                              FocusScope.of(dialogBuilderContext)
+                                  .unfocus();
+
+                              final picked =
+                                  await showDatePicker(
+                                context: dialogBuilderContext,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+
+                              if (picked != null) {
+                                setDialogState(() {
+                                  selectedDate = picked;
+                                });
+                              }
+                            },
+                    ),
+                    const Divider(),
+                    NumberField(
+                      label: '14kg Cylinder',
+                      controller: controllers['cylinder14']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: '19kg Cylinder',
+                      controller: controllers['cylinder19']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: '5kg Cylinder',
+                      controller: controllers['cylinder5']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Apron',
+                      controller: controllers['apron']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Stove',
+                      controller: controllers['stove']!,
+                      enabled: !saving,
+                    ),
+                    NumberField(
+                      label: 'Lighter',
+                      controller: controllers['lighter']!,
+                      enabled: !saving,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+  }
+}
+
+// ============================================================
+// DIALOG: CUSTOMER
 // ============================================================
 
 class NumberField extends StatelessWidget {
