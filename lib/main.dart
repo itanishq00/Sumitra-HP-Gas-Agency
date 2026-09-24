@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'firebase_options.dart';
@@ -166,18 +168,32 @@ class PinStorage {
   static String _biometricKey(String uid) =>
       'sumitra_hp_gas_biometric_$uid';
 
-  static Future<String?> readPin(String uid) {
+  static Future<String?> readPin(String uid) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_pinKey(uid));
+    }
     return _storage.read(key: _pinKey(uid));
   }
 
-  static Future<void> savePin(String uid, String pin) {
+  static Future<void> savePin(String uid, String pin) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pinKey(uid), pin);
+      return;
+    }
     return _storage.write(
       key: _pinKey(uid),
       value: pin,
     );
   }
 
-  static Future<void> requestPinReset(String uid) {
+  static Future<void> requestPinReset(String uid) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_resetKey(uid), true);
+      return;
+    }
     return _storage.write(
       key: _resetKey(uid),
       value: 'true',
@@ -185,6 +201,7 @@ class PinStorage {
   }
 
   static Future<bool> biometricEnabled(String uid) async {
+    if (kIsWeb) return false;
     final value = await _storage.read(key: _biometricKey(uid));
     return value == 'true';
   }
@@ -192,7 +209,12 @@ class PinStorage {
   static Future<void> setBiometricEnabled(
     String uid,
     bool enabled,
-  ) {
+  ) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_biometricKey(uid), enabled);
+      return;
+    }
     return _storage.write(
       key: _biometricKey(uid),
       value: enabled ? 'true' : 'false',
@@ -200,6 +222,15 @@ class PinStorage {
   }
 
   static Future<bool> consumePinResetRequest(String uid) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final requested = prefs.getBool(_resetKey(uid)) ?? false;
+      if (requested) {
+        await prefs.remove(_resetKey(uid));
+        return true;
+      }
+      return false;
+    }
     final requested = await _storage.read(
       key: _resetKey(uid),
     );
@@ -282,20 +313,27 @@ class _PinGateState extends State<PinGate> {
     );
 
     // Enable biometric unlock by default when the device supports it.
-    try {
-      final auth = LocalAuthentication();
-      final supported = await auth.isDeviceSupported();
-      final available = supported &&
-          (await auth.getAvailableBiometrics()).isNotEmpty;
-      await PinStorage.setBiometricEnabled(
-        widget.user.uid,
-        available,
-      );
-    } catch (_) {
+    if (kIsWeb) {
       await PinStorage.setBiometricEnabled(
         widget.user.uid,
         false,
       );
+    } else {
+      try {
+        final auth = LocalAuthentication();
+        final supported = await auth.isDeviceSupported();
+        final available = supported &&
+            (await auth.getAvailableBiometrics()).isNotEmpty;
+        await PinStorage.setBiometricEnabled(
+          widget.user.uid,
+          available,
+        );
+      } catch (_) {
+        await PinStorage.setBiometricEnabled(
+          widget.user.uid,
+          false,
+        );
+      }
     }
 
     if (!mounted) return;
