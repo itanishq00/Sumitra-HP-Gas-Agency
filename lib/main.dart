@@ -3728,13 +3728,168 @@ class CustomerTile extends StatelessWidget {
 // STAFF
 // ============================================================
 
-
-// Stubs for remaining modules
 class StaffScreen extends StatelessWidget {
   const StaffScreen({super.key});
+
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Staff Module'));
+  Widget build(BuildContext context) {
+    final collection =
+        FirebaseFirestore.instance.collection('staff');
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () {
+                showStaffDialog(context);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Staff'),
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: collection
+                .orderBy('name')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Staff load nahi ho pa raha.\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              final docs = snapshot.data?.docs ?? [];
+
+              if (docs.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.badge_outlined,
+                  title: 'No Staff',
+                  message: 'Abhi koi staff member add nahi kiya gaya.',
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  20,
+                ),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+
+                  return StaffTile(
+                    doc: doc,
+                    data: doc.data(),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
+
+class StaffTile extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final Map<String, dynamic> data;
+
+  const StaffTile({
+    super.key,
+    required this.doc,
+    required this.data,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = data['active'] == true;
+
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(
+          child: Icon(Icons.person),
+        ),
+        title: Text(
+          data['name'] ?? 'Unnamed',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(
+            'Staff ID: ${data['staffId'] ?? ''}\n'
+            'Phone: ${data['phone'] ?? ''}\n'
+            'Role: ${data['role'] ?? ''}\n'
+            'Joining: ${data['joiningDate'] ?? ''}\n'
+            '${active ? 'Active' : 'Inactive'}',
+          ),
+        ),
+        isThreeLine: true,
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            // Wait for the popup-menu route to finish deactivating
+            // before opening another route.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted) return;
+
+              if (value == 'edit') {
+                showStaffDialog(
+                  context,
+                  doc: doc,
+                  existingData: data,
+                );
+              } else if (value == 'delete') {
+                deleteStaff(
+                  context,
+                  doc.reference,
+                );
+              }
+            });
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'edit',
+              child: Text('Edit'),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Text('Remove'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ISSUES
+// ============================================================
+
+
+// Stubs for remaining modules
 class IssuesScreen extends StatelessWidget {
   const IssuesScreen({super.key});
   @override
@@ -4682,6 +4837,246 @@ Future<void> showCustomerDialog(
 // DIALOG: STAFF
 // ============================================================
 
+Future<void> showStaffDialog(
+  BuildContext parentContext, {
+  QueryDocumentSnapshot<Map<String, dynamic>>? doc,
+  Map<String, dynamic>? existingData,
+}) async {
+  final data = existingData ?? {};
+
+  final staffIdController = TextEditingController(
+    text: data['staffId'] ?? '',
+  );
+  final nameController = TextEditingController(
+    text: data['name'] ?? '',
+  );
+  final phoneController = TextEditingController(
+    text: data['phone'] ?? '',
+  );
+  final emailController = TextEditingController(
+    text: data['email'] ?? '',
+  );
+  final roleController = TextEditingController(
+    text: data['role'] ?? '',
+  );
+  final joiningDateController = TextEditingController(
+    text: data['joiningDate'] ?? '',
+  );
+  final notesController = TextEditingController(
+    text: data['notes'] ?? '',
+  );
+
+  bool active = data['active'] == true;
+
+  try {
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        bool saving = false;
+
+        return StatefulBuilder(
+          builder: (dialogBuilderContext, setDialogState) {
+            Future<void> handleSave() async {
+              if (saving) return;
+
+              if (nameController.text.trim().isEmpty) {
+                showMessage(
+                  'Staff name required hai.',
+                );
+                return;
+              }
+
+              FocusScope.of(dialogBuilderContext).unfocus();
+
+              setDialogState(() {
+                saving = true;
+              });
+
+              try {
+                final staffData = {
+                  'staffId':
+                      staffIdController.text.trim(),
+                  'name': nameController.text.trim(),
+                  'phone':
+                      phoneController.text.trim(),
+                  'email':
+                      emailController.text.trim(),
+                  'role':
+                      roleController.text.trim(),
+                  'joiningDate':
+                      joiningDateController.text.trim(),
+                  'active': active,
+                  'notes':
+                      notesController.text.trim(),
+                  'updatedAt':
+                      FieldValue.serverTimestamp(),
+                };
+
+                if (doc == null) {
+                  staffData['createdAt'] =
+                      FieldValue.serverTimestamp();
+
+                  await FirebaseFirestore.instance
+                      .collection('staff')
+                      .add(staffData);
+                } else {
+                  await doc.reference.update(
+                    staffData,
+                  );
+                }
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (parentContext.mounted) {
+                  showMessage(
+                    doc == null
+                        ? 'Staff added successfully.'
+                        : 'Staff updated successfully.',
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  saving = false;
+                });
+                if (dialogContext.mounted) {
+                  showMessage(
+                    'Save failed: $e',
+                  );
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: Text(
+                doc == null ? 'Add Staff' : 'Edit Staff',
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: staffIdController,
+                      enabled: !saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Staff ID',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: nameController,
+                      enabled: !saving,
+                      textCapitalization:
+                          TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Full Name',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: phoneController,
+                      enabled: !saving,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailController,
+                      enabled: !saving,
+                      keyboardType:
+                          TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: roleController,
+                      enabled: !saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Role / Designation',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: joiningDateController,
+                      enabled: !saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Joining Date',
+                        hintText: 'DD/MM/YYYY',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesController,
+                      enabled: !saving,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Active'),
+                      value: active,
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              setDialogState(() {
+                                active = value;
+                              });
+                            },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          FocusScope.of(dialogBuilderContext).unfocus();
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : handleSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    staffIdController.dispose();
+    nameController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    roleController.dispose();
+    joiningDateController.dispose();
+    notesController.dispose();
+  }
+}
+
+// ============================================================
+// DIALOG: COMPLAINT
+// ============================================================
+
 Future<void> deleteCustomer(
   BuildContext parentContext,
   DocumentReference<Map<String, dynamic>> reference,
@@ -4712,6 +5107,38 @@ Future<void> deleteCustomer(
 
 // ============================================================
 // DELETE STAFF
+// ============================================================
+
+Future<void> deleteStaff(
+  BuildContext parentContext,
+  DocumentReference<Map<String, dynamic>> reference,
+) async {
+  final confirm = await showDeleteConfirmation(
+    parentContext,
+    'Remove this staff member?',
+  );
+
+  if (confirm != true) return;
+
+  try {
+    await reference.delete();
+
+    if (parentContext.mounted) {
+      showMessage(
+        'Staff removed.',
+      );
+    }
+  } catch (e) {
+    if (parentContext.mounted) {
+      showMessage(
+        'Remove failed: $e',
+      );
+    }
+  }
+}
+
+// ============================================================
+// COMMON WIDGETS
 // ============================================================
 
 class NumberField extends StatelessWidget {
